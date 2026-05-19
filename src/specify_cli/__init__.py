@@ -450,6 +450,7 @@ def init(
     script_type: str = typer.Option(None, "--script", help="Script type to use: sh or ps"),
     ignore_agent_tools: bool = typer.Option(False, "--ignore-agent-tools", help="Skip checks for coding agent tools like Claude Code"),
     no_git: bool = typer.Option(False, "--no-git", help="Skip git repository initialization"),
+    enable_extensions: bool = typer.Option(False, "--enable-extensions", help="Enable extension hooks and install bundled default extensions during initialization"),
     here: bool = typer.Option(False, "--here", help="Initialize project in the current directory instead of creating a new one"),
     force: bool = typer.Option(False, "--force", help="Force merge/overwrite when using --here (skip confirmation)"),
     skip_tls: bool = typer.Option(False, "--skip-tls", help="Deprecated (no-op). Previously: skip SSL/TLS verification.", hidden=True),
@@ -497,6 +498,7 @@ def init(
         specify init --here --integration vibe      # Initialize with Mistral Vibe support
         specify init --here
         specify init --here --force  # Skip confirmation when current directory not empty
+        specify init my-project --integration pi --enable-extensions  # Enable extension hooks + bundled git extension
         specify init my-project --integration claude   # Claude installs skills by default
         specify init --here --integration gemini
         specify init my-project --integration generic --integration-options="--commands-dir .myagent/commands/"  # Bring your own agent; requires --commands-dir
@@ -572,8 +574,9 @@ def init(
     if no_git:
         console.print(
             "[yellow]⚠️  --no-git is deprecated and will be removed in v0.10.0.[/yellow]\n"
-            "[yellow]The git extension will no longer be enabled by default "
-            "— use the [bold]specify extension[/bold] commands to install or enable the git extension if needed.[/yellow]"
+            "[yellow]It now only skips git repository initialization. "
+            "Extensions are disabled by default; use [bold]--enable-extensions[/bold] "
+            "or [bold]specify extension hooks enable[/bold] when needed.[/yellow]"
         )
 
     if project_name == ".":
@@ -786,6 +789,7 @@ def init(
                 parsed_options=integration_parsed_options or None,
                 script_type=selected_script,
                 raw_options=integration_options,
+                extension_hooks_enabled=enable_extensions,
             )
             manifest.save()
 
@@ -840,29 +844,34 @@ def init(
                             git_messages.append("init failed")
                 else:
                     git_messages.append("git not available")
-                # Step 2: Install bundled git extension
-                try:
-                    from .extensions import ExtensionManager
-                    bundled_path = _locate_bundled_extension("git")
-                    if bundled_path:
-                        manager = ExtensionManager(project_path)
-                        if manager.registry.is_installed("git"):
-                            git_messages.append("extension already installed")
+                # Step 2: Install bundled git extension only when extension
+                # hooks are explicitly enabled.  Default init keeps projects
+                # extension-free and omits hook prompt blocks from commands.
+                if enable_extensions:
+                    try:
+                        from .extensions import ExtensionManager
+                        bundled_path = _locate_bundled_extension("git")
+                        if bundled_path:
+                            manager = ExtensionManager(project_path)
+                            if manager.registry.is_installed("git"):
+                                git_messages.append("extension already installed")
+                            else:
+                                manager.install_from_directory(
+                                    bundled_path, get_speckit_version()
+                                )
+                                git_default_notice = True
+                                git_messages.append("extension installed")
                         else:
-                            manager.install_from_directory(
-                                bundled_path, get_speckit_version()
-                            )
-                            git_default_notice = True
-                            git_messages.append("extension installed")
-                    else:
+                            git_has_error = True
+                            git_messages.append("bundled extension not found")
+                    except Exception as ext_err:
                         git_has_error = True
-                        git_messages.append("bundled extension not found")
-                except Exception as ext_err:
-                    git_has_error = True
-                    sanitized_ext = str(ext_err).replace('\n', ' ').strip()
-                    git_messages.append(
-                        f"extension install failed: {sanitized_ext[:120]}"
-                    )
+                        sanitized_ext = str(ext_err).replace('\n', ' ').strip()
+                        git_messages.append(
+                            f"extension install failed: {sanitized_ext[:120]}"
+                        )
+                else:
+                    git_messages.append("extensions disabled")
                 summary = "; ".join(git_messages)
                 if git_has_error:
                     tracker.error("git", summary)
@@ -916,6 +925,8 @@ def init(
                 "here": here,
                 "script": selected_script,
                 "speckit_version": get_speckit_version(),
+                "extensions_enabled": enable_extensions,
+                "extension_hooks": enable_extensions,
             }
             # Ensure ai_skills is set for SkillsIntegration so downstream
             # tools (extensions, presets) emit SKILL.md overrides correctly.
@@ -1025,10 +1036,10 @@ def init(
 
     if git_default_notice:
         default_change_notice = Panel(
-            "The git extension is currently enabled by default during [bold]specify init[/bold].\n"
-            "Starting in [bold]v0.10.0[/bold], this will require explicit opt-in.\n"
-            "Use [bold]specify extension add git[/bold] after init when needed.",
-            title="[yellow]Notice: Git Default Changing[/yellow]",
+            "Extension hooks were enabled for this project and the bundled git extension was installed.\n"
+            "For minimal projects, omit [bold]--enable-extensions[/bold] during init.\n"
+            "You can toggle hook prompt blocks later with [bold]specify extension hooks enable|disable[/bold].",
+            title="[yellow]Extensions Enabled[/yellow]",
             border_style="yellow",
             padding=(1, 2),
         )
@@ -1249,6 +1260,13 @@ catalog_app = typer.Typer(
     add_completion=False,
 )
 extension_app.add_typer(catalog_app, name="catalog")
+
+extension_hooks_app = typer.Typer(
+    name="hooks",
+    help="Manage extension hook integration in generated commands",
+    add_completion=False,
+)
+extension_app.add_typer(extension_hooks_app, name="hooks")
 
 preset_app = typer.Typer(
     name="preset",
@@ -1643,6 +1661,7 @@ def integration_install(
     raw_options, parsed_options = _resolve_integration_options(
         integration, current, key, integration_options
     )
+    extension_hooks_enabled = bool(load_init_options(project_root).get("extension_hooks"))
 
     # Ensure shared infrastructure is present (safe to run unconditionally;
     # _install_shared_infra merges missing files without overwriting).
@@ -1677,6 +1696,7 @@ def integration_install(
             parsed_options=parsed_options,
             script_type=selected_script,
             raw_options=raw_options,
+            extension_hooks_enabled=extension_hooks_enabled,
         )
         manifest.save()
         new_installed = _dedupe_integration_keys([*installed_keys, integration.key])
@@ -1762,6 +1782,56 @@ def _parse_integration_options(integration: Any, raw_options: str) -> dict[str, 
             console.print(f"[red]Error:[/red] Option '{opt.name}' requires a value.")
             raise typer.Exit(1)
     return parsed or None
+
+
+def _regenerate_installed_integration_commands(
+    project_root: Path,
+    *,
+    extension_hooks_enabled: bool,
+) -> None:
+    """Regenerate installed integration command files.
+
+    Used when toggling extension hook prompt blocks.  Existing integration
+    options (for example Copilot ``--skills``) and script type are preserved
+    from project metadata.
+    """
+    from .integrations import get_integration
+    from .integrations.manifest import IntegrationManifest
+
+    state = _read_integration_json(project_root)
+    keys = _installed_integration_keys(state)
+    fallback_key = state.get("integration") or state.get("default_integration")
+    if not keys and isinstance(fallback_key, str) and fallback_key:
+        keys = [fallback_key]
+    if not keys:
+        console.print("[red]Error:[/red] No integration found for this project.")
+        raise typer.Exit(1)
+
+    for key in keys:
+        integration = get_integration(key)
+        if integration is None:
+            console.print(f"[yellow]Warning:[/yellow] Skipping unknown integration: {key}")
+            continue
+
+        raw_options, parsed_options = _resolve_integration_options(
+            integration, state, key, None
+        )
+        script_type = _resolve_integration_script_type(project_root, state, key)
+        try:
+            manifest = IntegrationManifest.load(key, project_root)
+        except FileNotFoundError:
+            manifest = IntegrationManifest(key, project_root, version=get_speckit_version())
+
+        integration.setup(
+            project_root,
+            manifest,
+            parsed_options=parsed_options,
+            script_type=script_type,
+            raw_options=raw_options,
+            extension_hooks_enabled=extension_hooks_enabled,
+        )
+        manifest.version = get_speckit_version()
+        manifest.save()
 
 
 def _update_init_options_for_integration(
@@ -2146,6 +2216,7 @@ def integration_switch(
             parsed_options=parsed_options,
             script_type=selected_script,
             raw_options=raw_options,
+            extension_hooks_enabled=bool(load_init_options(project_root).get("extension_hooks")),
         )
         manifest.save()
         _set_default_integration(
@@ -2313,6 +2384,7 @@ def integration_upgrade(
             parsed_options=parsed_options,
             script_type=selected_script,
             raw_options=raw_options,
+            extension_hooks_enabled=bool(load_init_options(project_root).get("extension_hooks")),
         )
         settings = _with_integration_setting(
             current,
@@ -3589,6 +3661,77 @@ def catalog_remove(
         console.print("\n[dim]No catalogs remain in config. Built-in defaults will be used.[/dim]")
 
 
+@extension_hooks_app.command("status")
+def extension_hooks_status():
+    """Show whether extension hook blocks are enabled in generated commands."""
+    project_root = _require_specify_project()
+    opts = load_init_options(project_root)
+    enabled = bool(opts.get("extension_hooks"))
+    console.print(
+        f"Extension hooks in generated commands: "
+        f"[{'green' if enabled else 'yellow'}]{'enabled' if enabled else 'disabled'}[/]"
+    )
+    if not enabled:
+        console.print("Enable with: [cyan]specify extension hooks enable[/cyan]")
+
+
+@extension_hooks_app.command("enable")
+def extension_hooks_enable(
+    install_git: bool = typer.Option(False, "--install-git", help="Install bundled git extension after enabling hooks"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip interactive prompts"),
+):
+    """Enable extension hook blocks and regenerate active integration commands."""
+    from .extensions import ExtensionManager
+
+    project_root = _require_specify_project()
+    opts = load_init_options(project_root)
+    opts["extensions_enabled"] = True
+    opts["extension_hooks"] = True
+    save_init_options(project_root, opts)
+
+    _regenerate_installed_integration_commands(
+        project_root, extension_hooks_enabled=True
+    )
+
+    installed_git = False
+    manager = ExtensionManager(project_root)
+    should_install_git = install_git
+    if not should_install_git and not manager.registry.is_installed("git") and _stdin_is_interactive() and not yes:
+        should_install_git = typer.confirm(
+            "Install bundled git extension now?",
+            default=False,
+        )
+    if should_install_git and not manager.registry.is_installed("git"):
+        bundled_path = _locate_bundled_extension("git")
+        if bundled_path is None:
+            console.print("[yellow]Warning:[/yellow] Bundled git extension not found; hooks enabled only.")
+        else:
+            manager.install_from_directory(bundled_path, get_speckit_version())
+            installed_git = True
+
+    console.print("[green]✓[/green] Extension hook blocks enabled and commands regenerated")
+    if installed_git:
+        console.print("[green]✓[/green] Bundled git extension installed")
+    elif not manager.registry.is_installed("git"):
+        console.print("Install extensions with: [cyan]specify extension add git[/cyan]")
+
+
+@extension_hooks_app.command("disable")
+def extension_hooks_disable():
+    """Disable extension hook blocks and regenerate active integration commands."""
+    project_root = _require_specify_project()
+    opts = load_init_options(project_root)
+    opts["extensions_enabled"] = False
+    opts["extension_hooks"] = False
+    save_init_options(project_root, opts)
+
+    _regenerate_installed_integration_commands(
+        project_root, extension_hooks_enabled=False
+    )
+    console.print("[green]✓[/green] Extension hook blocks disabled and commands regenerated")
+    console.print("Installed extension commands are not removed; remove them with [cyan]specify extension remove <id>[/cyan] if desired.")
+
+
 @extension_app.command("add")
 def extension_add(
     extension: str = typer.Argument(help="Extension name or path"),
@@ -3751,6 +3894,17 @@ def extension_add(
             reg_skills = []
         if reg_skills:
             console.print(f"\n[green]✓[/green] {len(reg_skills)} agent skill(s) auto-registered")
+
+        init_opts = load_init_options(project_root)
+        if not bool(init_opts.get("extension_hooks")):
+            console.print(
+                "\n[yellow]⚠[/yellow]  Extension hook blocks are disabled for this project."
+            )
+            console.print(
+                "   Extension commands were installed, but core command before/after hooks "
+                "will not run until you enable them:"
+            )
+            console.print("   [cyan]specify extension hooks enable[/cyan]")
 
         console.print("\n[yellow]⚠[/yellow]  Configuration may be required")
         console.print(f"   Check: .specify/extensions/{manifest.id}/")

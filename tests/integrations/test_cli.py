@@ -721,14 +721,14 @@ class TestForceExistingDirectory:
 
 
 class TestGitExtensionAutoInstall:
-    """Tests for auto-installation of the git extension during specify init."""
+    """Tests for opt-in installation of the git extension during specify init."""
 
-    def test_git_extension_auto_installed(self, tmp_path):
-        """Without --no-git, the git extension is installed during init."""
+    def test_git_extension_not_auto_installed_by_default(self, tmp_path):
+        """By default, extensions are disabled and git extension is not installed."""
         from typer.testing import CliRunner
         from specify_cli import app
 
-        project = tmp_path / "git-auto"
+        project = tmp_path / "git-default-disabled"
         project.mkdir()
         old_cwd = os.getcwd()
         try:
@@ -742,24 +742,59 @@ class TestGitExtensionAutoInstall:
             os.chdir(old_cwd)
 
         assert result.exit_code == 0, f"init failed: {result.output}"
+        assert "install failed" not in result.output
 
-        # Check that the tracker didn't report a git error
+        ext_dir = project / ".specify" / "extensions" / "git"
+        assert not ext_dir.exists(), "git extension should not be installed by default"
+        assert not (project / ".specify" / "extensions.yml").exists()
+
+        opts = json.loads((project / ".specify" / "init-options.json").read_text(encoding="utf-8"))
+        assert opts["extensions_enabled"] is False
+        assert opts["extension_hooks"] is False
+
+        plan_skill = project / ".claude" / "skills" / "speckit-plan" / "SKILL.md"
+        assert "Extension Hooks" not in plan_skill.read_text(encoding="utf-8")
+
+    def test_enable_extensions_installs_git_extension(self, tmp_path):
+        """--enable-extensions installs bundled git extension and registers hooks."""
+        from typer.testing import CliRunner
+        from specify_cli import app
+
+        project = tmp_path / "git-enabled"
+        project.mkdir()
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(project)
+            runner = CliRunner()
+            result = runner.invoke(app, [
+                "init", "--here", "--ai", "claude", "--script", "sh",
+                "--enable-extensions", "--ignore-agent-tools",
+            ], catch_exceptions=False)
+        finally:
+            os.chdir(old_cwd)
+
+        assert result.exit_code == 0, f"init failed: {result.output}"
         assert "install failed" not in result.output, f"git extension install failed: {result.output}"
 
-        # Git extension files should be installed
         ext_dir = project / ".specify" / "extensions" / "git"
         assert ext_dir.exists(), "git extension directory not installed"
         assert (ext_dir / "extension.yml").exists()
         assert (ext_dir / "scripts" / "bash" / "create-new-feature.sh").exists()
         assert (ext_dir / "scripts" / "bash" / "initialize-repo.sh").exists()
 
-        # Hooks should be registered
         extensions_yml = project / ".specify" / "extensions.yml"
         assert extensions_yml.exists(), "extensions.yml not created"
         hooks_data = yaml.safe_load(extensions_yml.read_text(encoding="utf-8"))
         assert "hooks" in hooks_data
         assert "before_specify" in hooks_data["hooks"]
         assert "before_constitution" in hooks_data["hooks"]
+
+        opts = json.loads((project / ".specify" / "init-options.json").read_text(encoding="utf-8"))
+        assert opts["extensions_enabled"] is True
+        assert opts["extension_hooks"] is True
+
+        plan_skill = project / ".claude" / "skills" / "speckit-plan" / "SKILL.md"
+        assert "Extension Hooks" in plan_skill.read_text(encoding="utf-8")
 
     def test_no_git_skips_extension(self, tmp_path):
         """With --no-git, the git extension is NOT installed."""
@@ -781,7 +816,6 @@ class TestGitExtensionAutoInstall:
 
         assert result.exit_code == 0, f"init failed: {result.output}"
 
-        # Git extension should NOT be installed
         ext_dir = project / ".specify" / "extensions" / "git"
         assert not ext_dir.exists(), "git extension should not be installed with --no-git"
 
@@ -808,38 +842,12 @@ class TestGitExtensionAutoInstall:
         assert "--no-git" in normalized_output
         assert "deprecated" in normalized_output
         assert "0.10.0" in normalized_output
-        assert "specify extension" in normalized_output
+        assert "--enable-extensions" in normalized_output
+        assert "specify extension hooks enable" in normalized_output
         assert "will be removed" in normalized_output
-        assert "git extension will no longer be enabled by default" in normalized_output
 
-    def test_default_git_auto_enable_emits_notice(self, tmp_path):
-        """Default git auto-enable emits notice about the v0.10.0 opt-in change."""
-        from typer.testing import CliRunner
-        from specify_cli import app
-
-        project = tmp_path / "git-default-notice"
-        project.mkdir()
-        old_cwd = os.getcwd()
-        try:
-            os.chdir(project)
-            runner = CliRunner()
-            result = runner.invoke(app, [
-                "init", "--here", "--ai", "claude", "--script", "sh",
-                "--ignore-agent-tools",
-            ], catch_exceptions=False)
-        finally:
-            os.chdir(old_cwd)
-
-        normalized_output = _normalize_cli_output(result.output)
-        assert result.exit_code == 0, result.output
-        # Check for key message components (notice may have box-drawing chars)
-        assert "git extension is currently enabled by default" in normalized_output
-        assert "v0.10.0" in normalized_output
-        assert "explicit opt-in" in normalized_output
-        assert "specify extension add git" in normalized_output
-
-    def test_git_extension_commands_registered(self, tmp_path):
-        """Git extension commands are registered with the agent during init."""
+    def test_git_extension_commands_registered_with_enable_extensions(self, tmp_path):
+        """Git extension commands are registered during init when extensions are enabled."""
         from typer.testing import CliRunner
         from specify_cli import app
 
@@ -851,14 +859,13 @@ class TestGitExtensionAutoInstall:
             runner = CliRunner()
             result = runner.invoke(app, [
                 "init", "--here", "--ai", "claude", "--script", "sh",
-                "--ignore-agent-tools",
+                "--enable-extensions", "--ignore-agent-tools",
             ], catch_exceptions=False)
         finally:
             os.chdir(old_cwd)
 
         assert result.exit_code == 0, f"init failed: {result.output}"
 
-        # Git extension commands should be registered with the agent
         claude_skills = project / ".claude" / "skills"
         assert claude_skills.exists(), "Claude skills directory was not created"
         git_skills = [f for f in claude_skills.iterdir() if f.name.startswith("speckit-git-")]

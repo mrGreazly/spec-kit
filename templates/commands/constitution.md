@@ -16,6 +16,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Pre-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START before_constitution -->
 **Check for extension hooks (before constitution update)**:
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_constitution` key
@@ -47,6 +48,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     Wait for the result of the hook command before proceeding to the Outline.
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->
 
 ## Outline
 
@@ -119,6 +121,7 @@ Do not create a new template; always operate on the existing `.specify/memory/co
 
 ## Post-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START after_constitution -->
 **Check for extension hooks (after constitution update)**:
 Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.after_constitution` key
@@ -148,3 +151,4 @@ Check if `.specify/extensions.yml` exists in the project root.
     EXECUTE_COMMAND: {command}
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->

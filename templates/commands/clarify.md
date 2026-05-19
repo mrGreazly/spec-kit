@@ -19,6 +19,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Pre-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START before_clarify -->
 **Check for extension hooks (before clarification)**:
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_clarify` key
@@ -50,6 +51,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     Wait for the result of the hook command before proceeding to the Outline.
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->
 
 ## Outline
 
@@ -219,6 +221,7 @@ Context for prioritization: {ARGS}
 
 ## Post-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START after_clarify -->
 **Check for extension hooks (after clarification)**:
 Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.after_clarify` key
@@ -248,3 +251,4 @@ Check if `.specify/extensions.yml` exists in the project root.
     EXECUTE_COMMAND: {command}
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->

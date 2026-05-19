@@ -16,6 +16,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Pre-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START before_taskstoissues -->
 **Check for extension hooks (before tasks-to-issues conversion)**:
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_taskstoissues` key
@@ -47,6 +48,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     Wait for the result of the hook command before proceeding to the Outline.
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->
 
 ## Outline
 
@@ -68,6 +70,7 @@ git config --get remote.origin.url
 
 ## Post-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START after_taskstoissues -->
 **Check for extension hooks (after tasks-to-issues conversion)**:
 Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.after_taskstoissues` key
@@ -97,3 +100,4 @@ Check if `.specify/extensions.yml` exists in the project root.
     EXECUTE_COMMAND: {command}
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->

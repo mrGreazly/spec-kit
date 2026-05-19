@@ -643,6 +643,39 @@ class IntegrationBase(ABC):
         )
 
     @staticmethod
+    def strip_extension_hook_blocks(content: str) -> str:
+        """Remove blocks guarded by Spec Kit extension-hook markers.
+
+        Templates may wrap hook-specific instructions in::
+
+            <!-- SPECKIT_EXTENSION_HOOKS_START <event> -->
+            ...
+            <!-- SPECKIT_EXTENSION_HOOKS_END -->
+
+        Projects initialised with extension hooks disabled omit these blocks
+        from generated agent commands to avoid unnecessary prompt context.
+        """
+        return re.sub(
+            r"(?ms)^<!-- SPECKIT_EXTENSION_HOOKS_START\b[^\n]*-->\n.*?^<!-- SPECKIT_EXTENSION_HOOKS_END -->\n?",
+            "",
+            content,
+        )
+
+    @staticmethod
+    def unwrap_extension_hook_blocks(content: str) -> str:
+        """Keep extension-hook content but remove template-only markers."""
+        content = re.sub(
+            r"(?m)^<!-- SPECKIT_EXTENSION_HOOKS_START\b[^\n]*-->\n?",
+            "",
+            content,
+        )
+        return re.sub(
+            r"(?m)^<!-- SPECKIT_EXTENSION_HOOKS_END -->\n?",
+            "",
+            content,
+        )
+
+    @staticmethod
     def process_template(
         content: str,
         agent_name: str,
@@ -650,6 +683,7 @@ class IntegrationBase(ABC):
         arg_placeholder: str = "$ARGUMENTS",
         context_file: str = "",
         invoke_separator: str = ".",
+        extension_hooks_enabled: bool = True,
     ) -> str:
         """Process a raw command template into agent-ready content.
 
@@ -663,6 +697,11 @@ class IntegrationBase(ABC):
         7. Rewrite paths: ``scripts/`` → ``.specify/scripts/`` etc.
         8. Replace ``__SPECKIT_COMMAND_<NAME>__`` with invocation strings
         """
+        if extension_hooks_enabled:
+            content = IntegrationBase.unwrap_extension_hook_blocks(content)
+        else:
+            content = IntegrationBase.strip_extension_hook_blocks(content)
+
         # 1. Extract script command from frontmatter
         script_command = ""
         script_pattern = re.compile(
@@ -886,6 +925,7 @@ class MarkdownIntegration(IntegrationBase):
         dest.mkdir(parents=True, exist_ok=True)
 
         script_type = opts.get("script_type", "sh")
+        extension_hooks_enabled = opts.get("extension_hooks_enabled", True)
         arg_placeholder = (
             self.registrar_config.get("args", "$ARGUMENTS")
             if self.registrar_config
@@ -898,6 +938,7 @@ class MarkdownIntegration(IntegrationBase):
             processed = self.process_template(
                 raw, self.key, script_type, arg_placeholder,
                 context_file=self.context_file or "",
+                extension_hooks_enabled=extension_hooks_enabled,
             )
             dst_name = self.command_filename(src_file.stem)
             dst_file = self.write_file_and_record(
@@ -1090,6 +1131,7 @@ class TomlIntegration(IntegrationBase):
         dest.mkdir(parents=True, exist_ok=True)
 
         script_type = opts.get("script_type", "sh")
+        extension_hooks_enabled = opts.get("extension_hooks_enabled", True)
         arg_placeholder = (
             self.registrar_config.get("args", "{{args}}")
             if self.registrar_config
@@ -1103,6 +1145,7 @@ class TomlIntegration(IntegrationBase):
             processed = self.process_template(
                 raw, self.key, script_type, arg_placeholder,
                 context_file=self.context_file or "",
+                extension_hooks_enabled=extension_hooks_enabled,
             )
             _, body = self._split_frontmatter(processed)
             toml_content = self._render_toml(description, body)
@@ -1285,6 +1328,7 @@ class YamlIntegration(IntegrationBase):
         dest.mkdir(parents=True, exist_ok=True)
 
         script_type = opts.get("script_type", "sh")
+        extension_hooks_enabled = opts.get("extension_hooks_enabled", True)
         arg_placeholder = (
             self.registrar_config.get("args", "{{args}}")
             if self.registrar_config
@@ -1307,6 +1351,7 @@ class YamlIntegration(IntegrationBase):
             processed = self.process_template(
                 raw, self.key, script_type, arg_placeholder,
                 context_file=self.context_file or "",
+                extension_hooks_enabled=extension_hooks_enabled,
             )
             _, body = self._split_frontmatter(processed)
             yaml_content = self._render_yaml(
@@ -1436,6 +1481,7 @@ class SkillsIntegration(IntegrationBase):
             ) from exc
 
         script_type = opts.get("script_type", "sh")
+        extension_hooks_enabled = opts.get("extension_hooks_enabled", True)
         arg_placeholder = (
             self.registrar_config.get("args", "$ARGUMENTS")
             if self.registrar_config
@@ -1467,6 +1513,7 @@ class SkillsIntegration(IntegrationBase):
                 raw, self.key, script_type, arg_placeholder,
                 context_file=self.context_file or "",
                 invoke_separator=self.invoke_separator,
+                extension_hooks_enabled=extension_hooks_enabled,
             )
             # Strip the processed frontmatter — we rebuild it for skills.
             # Preserve leading whitespace in the body to match release ZIP

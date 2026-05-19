@@ -15,6 +15,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Pre-Execution Checks
 
+<!-- SPECKIT_EXTENSION_HOOKS_START before_analyze -->
 **Check for extension hooks (before analysis)**:
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_analyze` key
@@ -46,6 +47,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     Wait for the result of the hook command before proceeding to the Goal.
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->
 
 ## Goal
 
@@ -199,6 +201,7 @@ At end of report, output a concise Next Actions block:
 
 Ask the user: "Would you like me to suggest concrete remediation edits for the top N issues?" (Do NOT apply them automatically.)
 
+<!-- SPECKIT_EXTENSION_HOOKS_START after_analyze -->
 ### 9. Check for extension hooks
 
 After reporting, check if `.specify/extensions.yml` exists in the project root.
@@ -229,6 +232,7 @@ After reporting, check if `.specify/extensions.yml` exists in the project root.
     EXECUTE_COMMAND: {command}
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+<!-- SPECKIT_EXTENSION_HOOKS_END -->
 
 ## Operating Principles
 

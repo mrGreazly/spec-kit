@@ -117,6 +117,7 @@ class GenericIntegration(MarkdownIntegration):
         dest.mkdir(parents=True, exist_ok=True)
 
         script_type = opts.get("script_type", "sh")
+        extension_hooks_enabled = opts.get("extension_hooks_enabled", True)
         arg_placeholder = "$ARGUMENTS"
         created: list[Path] = []
 
@@ -125,6 +126,7 @@ class GenericIntegration(MarkdownIntegration):
             processed = self.process_template(
                 raw, self.key, script_type, arg_placeholder,
                 context_file=self.context_file or "",
+                extension_hooks_enabled=extension_hooks_enabled,
             )
             dst_name = self.command_filename(src_file.stem)
             dst_file = self.write_file_and_record(

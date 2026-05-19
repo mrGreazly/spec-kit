@@ -16,6 +16,7 @@ specify init [<project_name>]
 | `--here`                 | Initialize in the current directory instead of creating a new one        |
 | `--force`                | Force merge/overwrite when initializing in an existing directory         |
 | `--no-git`               | Skip git repository initialization                                       |
+| `--enable-extensions`    | Enable extension hook blocks and install bundled default extensions      |
 | `--ignore-agent-tools`   | Skip checks for AI coding agent CLI tools                                |
 | `--preset <id>`          | Install a preset during initialization                                   |
 | `--branch-numbering`     | Branch numbering strategy: `sequential` (default) or `timestamp`         |
@@ -23,8 +24,8 @@ specify init [<project_name>]
 Creates a new Spec Kit project with the necessary directory structure, templates, scripts, and AI coding agent integration files.
 
 > [!NOTE]
-> The git extension is currently enabled by default during `specify init`.
-> Starting in `v0.10.0`, it will require explicit opt-in. To add it after init, run `specify extension add git`.
+> Extensions are disabled by default during `specify init`. To opt in during initialization, pass `--enable-extensions`.
+> The bundled `git` extension remains available and can be installed later with `specify extension add git`; enable core command hook blocks with `specify extension hooks enable`.
 
 Use `<project_name>` to create a new directory, or `--here` (or `.`) to initialize in the current directory. If the directory already has files, use `--force` to merge without confirmation.
 
@@ -47,6 +48,9 @@ specify init my-project --integration copilot --script ps
 
 # Skip git initialization
 specify init my-project --integration copilot --no-git
+
+# Enable extension hooks and bundled default extensions
+specify init my-project --integration copilot --enable-extensions
 
 # Install a preset during initialization
 specify init my-project --integration copilot --preset compliance
